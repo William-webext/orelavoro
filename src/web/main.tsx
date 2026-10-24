@@ -1,6 +1,7 @@
 import { render, type JSX } from 'preact';
 import { useCallback, useEffect, useState } from 'preact/hooks';
 import './styles.css';
+import './install.ts'; // registra subito l'ascolto di "beforeinstallprompt"
 import { api, getViewAs, onUnauthorized, setViewAs, type Status, type User } from './api.ts';
 import { Admin } from './pages/Admin.tsx';
 import { Login } from './pages/Login.tsx';

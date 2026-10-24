@@ -1,6 +1,7 @@
 import { useState } from 'preact/hooks';
 import { api, type User } from '../api.ts';
 import { WEEKDAY_SHORT } from '../format.ts';
+import { detectPlatform, isInstalled, useInstallPrompt } from '../install.ts';
 import { navigate, useSession } from '../session.tsx';
 import { Icon, Sheet, toast, toastError } from '../ui.tsx';
 
@@ -69,7 +70,9 @@ export function More() {
   const [email, setEmail] = useState(user.email);
   const [pinOpen, setPinOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const standalone = window.matchMedia('(display-mode: standalone)').matches || (navigator as unknown as { standalone?: boolean }).standalone === true;
+  const standalone = isInstalled();
+  const platform = detectPlatform();
+  const installPrompt = useInstallPrompt();
 
   async function patch(p: Partial<Pick<User, 'displayName' | 'email' | 'autorest' | 'restWeekdays' | 'notifyOpen' | 'monthlyReport'>>, quiet = false) {
     try {
@@ -190,10 +193,29 @@ export function More() {
 
           {!standalone && (
             <div class="card">
-              <h2>Installa su iPhone</h2>
-              <p class="small muted" style={{ margin: 0 }}>
-                In Safari tocca <b>Condividi</b> (il quadrato con la freccia) e poi <b>Aggiungi alla schermata Home</b>. Si aprirà a schermo intero, come un’app.
-              </p>
+              <h2>{platform === 'ios' ? 'Installa su iPhone' : platform === 'android' ? 'Installa su Android' : 'Installa l’app'}</h2>
+              <div class="stack">
+                {platform === 'ios' && (
+                  <p class="small muted" style={{ margin: 0 }}>
+                    Apri questa pagina in <b>Safari</b>, tocca <b>Condividi</b> (il quadrato con la freccia) e poi <b>Aggiungi alla schermata Home</b>. Si aprirà a schermo intero, come un’app.
+                  </p>
+                )}
+                {platform === 'android' && (
+                  <p class="small muted" style={{ margin: 0 }}>
+                    Apri questa pagina in <b>Chrome</b>, tocca il menu <b>⋮</b> in alto a destra e scegli <b>Installa app</b> (o <b>Aggiungi a schermata Home</b>). Comparirà tra le tue app.
+                  </p>
+                )}
+                {platform === 'desktop' && (
+                  <p class="small muted" style={{ margin: 0 }}>
+                    In Chrome o Edge clicca l’icona di installazione nella barra degli indirizzi: l’app si apre in una finestra tutta sua.
+                  </p>
+                )}
+                {installPrompt.available && (
+                  <button class="btn primary" onClick={installPrompt.install}>
+                    <Icon name="download" /> Installa ora
+                  </button>
+                )}
+              </div>
             </div>
           )}
 

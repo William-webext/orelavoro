@@ -40,7 +40,7 @@ Web app (PWA) per registrare le ore di lavoro e controllare che lo stipendio sia
    (opzionali: `DATA_PATH`, `APP_TZ`, `SMTP_PORT`.)
 5. *Deploy the stack*: l'app risponde su `http://IP-DEL-NAS:3000`.
 6. **Cloudflare Tunnel**: nel tunnel esistente aggiungi un *Public hostname* `ore.beerfactory.pt` → servizio `HTTP` → `IP-DEL-NAS:3000`. Cloudflare crea il record DNS da solo.
-7. Dal telefono apri `https://ore.beerfactory.pt`, accedi, poi in Safari: **Condividi → Aggiungi alla schermata Home**.
+7. Dal telefono apri `https://ore.beerfactory.pt`, accedi, poi installa l'app: su iPhone, in Safari, **Condividi → Aggiungi alla schermata Home**; su Android, in Chrome, menu **⋮ → Installa app** (oppure il pulsante *Installa ora* in *Altro*).
 
 Il superadmin viene creato **solo al primo avvio** con database vuoto. Gli altri utenti si creano da *Altro → Apri amministrazione*. Dopo il primo accesso puoi togliere `SUPERADMIN_*` dalle variabili.
 
