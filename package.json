@@ -1,0 +1,36 @@
+{
+  "name": "orelavoro",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Registro ore di lavoro e controllo stipendio (PWA self-hosted)",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev:server": "node --watch --env-file-if-exists=.env src/server/index.ts",
+    "dev:web": "vite",
+    "build": "vite build",
+    "start": "node --env-file-if-exists=.env src/server/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test \"src/server/**/*.test.ts\"",
+    "icons": "node scripts/make-icons.mjs"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.5",
+    "exceljs": "^4.4.0",
+    "hono": "^4.13.13",
+    "nodemailer": "^10.2.1",
+    "pdfkit": "^0.20.2",
+    "preact": "^11.0.2",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.10.6",
+    "@types/node": "^26.6.5",
+    "@types/nodemailer": "^8.0.2",
+    "@types/pdfkit": "^0.17.7",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5"
+  }
+}
