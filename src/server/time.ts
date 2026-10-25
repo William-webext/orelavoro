@@ -150,3 +150,8 @@ export function euro(cents: number | null | undefined): string {
   if (cents == null) return '—';
   return (cents / 100).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' });
 }
+
+/** "2026-10-25" → "25/10/2026" */
+export function itDate(date: string): string {
+  return date.split('-').reverse().join('/');
+}

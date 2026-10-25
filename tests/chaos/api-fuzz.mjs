@@ -121,7 +121,7 @@ const tablet = await login('alice', '111111', { headers: { 'user-agent': UA_ANDR
 const old = await call('GET', '/api/me', { cookie: phone.cookie });
 check('il nuovo accesso scollega il dispositivo precedente → 401', old.status === 401, `ottenuto ${old.status}`);
 check('il vecchio dispositivo riceve il codice "replaced"', old.json?.code === 'replaced', JSON.stringify(old.json));
-check('il messaggio dice su quale dispositivo si è acceso', /altro dispositivo \(telefono Android\)/.test(old.json?.error ?? ''), old.json?.error);
+check('il messaggio dice dispositivo, browser e ora dell’accesso', /altro dispositivo \(telefono Android, Chrome\) alle \d\d:\d\d\. Accedi/.test(old.json?.error ?? ''), old.json?.error);
 check('il nuovo dispositivo funziona', (await call('GET', '/api/me', { cookie: tablet.cookie })).status === 200);
 check('anche un’azione di scrittura dal vecchio dispositivo è rifiutata', (await call('POST', '/api/clock/in', { cookie: phone.cookie, body: {} })).status === 401);
 const phone2 = await login('alice', '111111', { headers: { 'user-agent': UA_IPHONE } });

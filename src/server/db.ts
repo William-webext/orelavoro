@@ -110,6 +110,10 @@ const MIGRATIONS: string[] = [
   ALTER TABLE entries ADD COLUMN device TEXT NOT NULL DEFAULT '';
   ALTER TABLE entries ADD COLUMN end_device TEXT NOT NULL DEFAULT '';
   `,
+  // 4: orario in cui una sessione è stata sostituita da un altro dispositivo
+  `
+  ALTER TABLE sessions ADD COLUMN revoked_at INTEGER;
+  `,
 ];
 
 function migrate() {
