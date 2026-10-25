@@ -112,6 +112,22 @@ check('origine uguale su POST ammessa', [200, 409].includes((await call('POST', 
 const out = await call('POST', '/api/clock/out', { cookie: A, body: {} });
 check('uscita fatta subito dopo l’ingresso → rifiuto gestito', out.status === 409, `ottenuto ${out.status}`);
 
+// un solo dispositivo attivo per utente
+const UA_IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) Safari';
+const UA_ANDROID = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) Mobile Chrome/126';
+const phone = await login('alice', '111111', { headers: { 'user-agent': UA_IPHONE } });
+check('il telefono è collegato', (await call('GET', '/api/me', { cookie: phone.cookie })).status === 200);
+const tablet = await login('alice', '111111', { headers: { 'user-agent': UA_ANDROID } });
+const old = await call('GET', '/api/me', { cookie: phone.cookie });
+check('il nuovo accesso scollega il dispositivo precedente → 401', old.status === 401, `ottenuto ${old.status}`);
+check('il vecchio dispositivo riceve il codice "replaced"', old.json?.code === 'replaced', JSON.stringify(old.json));
+check('il messaggio dice su quale dispositivo si è acceso', /altro dispositivo \(telefono Android\)/.test(old.json?.error ?? ''), old.json?.error);
+check('il nuovo dispositivo funziona', (await call('GET', '/api/me', { cookie: tablet.cookie })).status === 200);
+check('anche un’azione di scrittura dal vecchio dispositivo è rifiutata', (await call('POST', '/api/clock/in', { cookie: phone.cookie, body: {} })).status === 401);
+const phone2 = await login('alice', '111111', { headers: { 'user-agent': UA_IPHONE } });
+check('rientrando dal telefono, il tablet viene scollegato', (await call('GET', '/api/me', { cookie: tablet.cookie })).json?.code === 'replaced' && (await call('GET', '/api/me', { cookie: phone2.cookie })).status === 200);
+check('la sessione di un altro utente non è toccata', (await call('GET', '/api/me', { cookie: B })).status === 200);
+
 // cookie di sessione
 const lg = await call('POST', '/api/login', { body: { username: 'alice', pin: '111111' }, headers: { 'x-forwarded-proto': 'https' } });
 const sc = lg.headers.getSetCookie()[0] ?? '';

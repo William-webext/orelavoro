@@ -56,7 +56,7 @@ app.route('/api/admin', admin);
 app.route('/api', api);
 
 app.onError((err, c) => {
-  if (err instanceof HttpError) return c.json({ error: err.message }, err.status as 400);
+  if (err instanceof HttpError) return c.json({ error: err.message, code: err.code }, err.status as 400);
   console.error('[errore]', err);
   return c.json({ error: 'Errore interno del server.' }, 500);
 });

@@ -14,6 +14,9 @@ export interface QueuedPunch {
   error?: string;
 }
 
+/** Quanto aspetta il tocco su "Timbra" l'esito dell'invio quando c'è già una coda. */
+const SEND_WAIT_MS = 5000;
+
 const K_QUEUE = 'ol_queue';
 const K_SKEW = 'ol_skew';
 const K_STATUS = 'ol_status';
@@ -173,7 +176,9 @@ export async function punch(kind: 'in' | 'out', userId: number, canQueue: boolea
   if (canQueue && pendingFor(userId).length > 0) {
     queue.push({ clientId, kind, at, userId });
     persist();
-    await flush(userId);
+    // Si aspetta l'invio solo per poco: con un server lento la persona non deve restare ferma sul
+    // pulsante. Se non è ancora partita resta "in coda" e l'invio prosegue in background.
+    await Promise.race([flush(userId), new Promise<void>((resolve) => setTimeout(resolve, SEND_WAIT_MS))]);
     return settle(clientId);
   }
 

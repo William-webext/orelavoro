@@ -83,3 +83,24 @@ test('la sincronizzazione in ordine di orario ricostruisce il turno anche se inv
   assert.equal(entries().length, 1);
   assert.equal(e.end_min! - e.start_min, 240);
 });
+
+test('conflitti: i messaggi dicono quando e da quale dispositivo è già stata fatta la timbratura', () => {
+  db.prepare('DELETE FROM entries').run();
+  db.prepare('DELETE FROM clock_log').run();
+  const t = Date.now() - 30 * MIN;
+  applyClock(user, 'in', { clientId: 'dev-in-00001', at: t, device: 'iPhone' });
+  // il tablet, con la pagina non aggiornata, prova a timbrare l'entrata di nuovo
+  assert.throws(
+    () => applyClock(user, 'in', { clientId: 'dev-in-00002', device: 'tablet Android' }),
+    (e: Error) => /già un ingresso aperto dalle \d\d:\d\d da iPhone/.test(e.message) && /non era aggiornata/.test(e.message),
+  );
+  const row = entries()[0];
+  assert.equal(row.device, 'iPhone');
+  // il telefono chiude il turno; il tablet, ancora vecchio, prova a chiuderlo di nuovo
+  applyClock(user, 'out', { clientId: 'dev-out-0001', at: Date.now() - 5 * MIN, device: 'iPhone' });
+  assert.equal(entries()[0].end_device, 'iPhone');
+  assert.throws(
+    () => applyClock(user, 'out', { clientId: 'dev-out-0002', device: 'tablet Android' }),
+    /nessun ingresso aperto: l’uscita risulta già registrata alle \d\d:\d\d da iPhone/,
+  );
+});

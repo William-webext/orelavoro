@@ -4,6 +4,7 @@ import {
   auditIfOther,
   createSession,
   destroySession,
+  deviceLabel,
   destroyUserSessions,
   hashPin,
   HttpError,
@@ -224,7 +225,7 @@ async function clockBody(c: { req: { json: () => Promise<unknown> } }) {
 
 async function clock(c: Context<AppEnv>, kind: 'in' | 'out') {
   const target = c.get('target');
-  const res = applyClock(target, kind, await clockBody(c));
+  const res = applyClock(target, kind, { ...(await clockBody(c)), device: deviceLabel(c.req.header('user-agent') ?? '') });
   if (res.entry) {
     const e = res.entry;
     auditIfOther(
@@ -255,11 +256,12 @@ api.post('/clock/sync', async (c) => {
         .max(200),
     }),
   );
+  const device = deviceLabel(c.req.header('user-agent') ?? '');
   const results = [...b.events]
     .sort((x, y) => x.at - y.at)
     .map((ev) => {
       try {
-        const r = applyClock(target, ev.kind, { clientId: ev.clientId, at: ev.at });
+        const r = applyClock(target, ev.kind, { clientId: ev.clientId, at: ev.at, device });
         if (r.entry) {
           auditIfOther(c, ev.kind === 'in' ? 'timbra entrata (offline)' : 'timbra uscita (offline)', `${itDate(r.entry.date)} ${fmtClock(r.entry.start_min)}`);
         }
@@ -290,8 +292,8 @@ api.post('/entries', async (c) => {
     assertNoOverlap(target.id, n.date, n.startMin, n.endMin);
     const ts = Date.now();
     const r = db
-      .prepare('INSERT INTO entries (user_id, date, start_min, end_min, note, created_at, updated_at) VALUES (?,?,?,?,?,?,?)')
-      .run(target.id, n.date, n.startMin, n.endMin, n.note, ts, ts);
+      .prepare('INSERT INTO entries (user_id, date, start_min, end_min, note, device, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)')
+      .run(target.id, n.date, n.startMin, n.endMin, n.note, deviceLabel(c.req.header('user-agent') ?? ''), ts, ts);
     return db.prepare('SELECT * FROM entries WHERE id = ?').get(Number(r.lastInsertRowid)) as unknown as EntryRow;
   });
   auditIfOther(c, 'nuova registrazione', `${itDate(n.date)} ${fmtClock(n.startMin)}–${n.endMin == null ? '…' : fmtClock(n.endMin)}`);

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { api, DAY_TYPE_LABEL, type Month as MonthData, type Salary } from '../api.ts';
 import { addMonths, clockIn, dur, euro, itDate, monthLabel, moneyInput, parseMoney, rate, WEEKDAY_SHORT } from '../format.ts';
 import { navigate, parseHash, useSession } from '../session.tsx';
-import { ErrorBox, Icon, MonthNav, Spinner, toast, toastError, useLoad } from '../ui.tsx';
+import { ErrorBox, Icon, MonthNav, Spinner, toast, toastError, useLoad, useRefreshOnFocus } from '../ui.tsx';
 
 interface ReportData {
   report: { user: { id: number; name: string }; ym: string; label: string; month: MonthData; salary: Salary };
@@ -14,6 +14,7 @@ export function Report() {
   const thisYm = clockIn(tz, Date.now()).date.slice(0, 7);
   const ym = /^\d{4}-\d{2}$/.test(arg) ? arg : addMonths(thisYm, 0);
   const { data, error, loading, reload } = useLoad(() => api.get<ReportData>(`/report?ym=${ym}`), [ym]);
+  useRefreshOnFocus(reload);
 
   const [net, setNet] = useState('');
   const [gross, setGross] = useState('');

@@ -35,7 +35,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
     --bg: #0e1318;
     --surface: #161d25;
     --surface-2: #1b242d;
@@ -65,6 +65,38 @@
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
     color-scheme: dark;
   }
+}
+
+/* tema scelto a mano in "Altro": ha la precedenza sull'impostazione del dispositivo */
+:root[data-theme='dark'] {
+  --bg: #0e1318;
+  --surface: #161d25;
+  --surface-2: #1b242d;
+  --ink: #e8edf2;
+  --muted: #93a0ae;
+  --line: #26313c;
+  --primary: #2cb4d0;
+  --primary-strong: #54c8e0;
+  --primary-soft: #11323b;
+  --on-primary: #04222a;
+  --ok: #4ade80;
+  --ok-soft: #12301e;
+  --danger: #ff8a80;
+  --danger-soft: #3a1a18;
+  --warn: #f6c453;
+  --warn-soft: #33270b;
+  --t-ferie: #7cb8f2;
+  --t-ferie-bg: #12263a;
+  --t-malattia: #ff8a80;
+  --t-malattia-bg: #3a1a18;
+  --t-permesso: #b99af0;
+  --t-permesso-bg: #272041;
+  --t-festivo: #f6c453;
+  --t-festivo-bg: #33270b;
+  --t-riposo: #a9b6c4;
+  --t-riposo-bg: #222c36;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  color-scheme: dark;
 }
 
 * {
@@ -595,10 +627,14 @@ input[type='date'].input {
   color: #fff;
 }
 @media (prefers-color-scheme: dark) {
-  .btn.in,
-  .btn.out {
+  :root:not([data-theme='light']) .btn.in,
+  :root:not([data-theme='light']) .btn.out {
     color: #0b1117;
   }
+}
+:root[data-theme='dark'] .btn.in,
+:root[data-theme='dark'] .btn.out {
+  color: #0b1117;
 }
 
 .stat-row {

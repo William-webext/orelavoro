@@ -12,7 +12,7 @@ async function precache() {
   const html = await res.clone().text();
   await cache.put('/', res);
   const assets = [...new Set(html.match(/\/assets\/[^"'\s)]+/g) ?? [])];
-  const extra = ['/manifest.webmanifest', '/icon-192.png', '/apple-touch-icon.png'];
+  const extra = ['/theme-init.js', '/manifest.webmanifest', '/icon-192.png', '/apple-touch-icon.png'];
   await Promise.all([...assets, ...extra].map((u) => cache.add(u).catch(() => {})));
 }
 
@@ -64,7 +64,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   // File con nome "a impronta" (/assets/...) e icone: prima la copia salvata.
-  if (url.pathname.startsWith('/assets/') || /\.(png|webmanifest)$/.test(url.pathname)) {
+  if (url.pathname.startsWith('/assets/') || url.pathname === '/theme-init.js' || /\.(png|webmanifest)$/.test(url.pathname)) {
     event.respondWith(
       caches.match(req).then(
         (hit) =>

@@ -2,13 +2,17 @@ import { assertNoOverlap, openEntry } from './calc.ts';
 import { HttpError } from './auth.ts';
 import { config } from './config.ts';
 import { db, tx, type EntryRow, type UserRow } from './db.ts';
-import { diffDays, epochToLocal, fmtClock } from './time.ts';
+import { diffDays, epochToLocal, fmtClock, localToEpochMs } from './time.ts';
+
+const by = (device: string) => (device ? ` da ${device}` : '');
 
 export interface ClockOptions {
   /** Identificatore generato dal telefono: rende sicuro ripetere la stessa richiesta. */
   clientId?: string;
   /** Istante reale (ms epoch) della timbratura, per quelle salvate offline e inviate dopo. */
   at?: number;
+  /** Dispositivo che timbra (es. "iPhone"), registrato sulla voce e citato nei messaggi di conflitto. */
+  device?: string;
 }
 
 export interface ClockResult {
@@ -43,16 +47,32 @@ export function applyClock(target: UserRow, kind: 'in' | 'out', opts: ClockOptio
 
     let entry: EntryRow;
     if (kind === 'in') {
-      if (openEntry(target.id)) throw new HttpError(409, 'Hai già un ingresso senza uscita. Segna prima l’uscita.');
+      const already = openEntry(target.id);
+      if (already) {
+        const when = `${fmtClock(already.start_min)}${already.date !== local.date ? ` del ${itDate(already.date)}` : ''}`;
+        throw new HttpError(409, `Hai già un ingresso aperto dalle ${when}${by(already.device)}: la pagina non era aggiornata.`);
+      }
       assertNoOverlap(target.id, local.date, local.minutes, null);
       const ts = Date.now();
       const r = db
-        .prepare('INSERT INTO entries (user_id, date, start_min, end_min, note, offline, created_at, updated_at) VALUES (?,?,?,NULL,?,?,?,?)')
-        .run(target.id, local.date, local.minutes, '', deferred ? 1 : 0, ts, ts);
+        .prepare('INSERT INTO entries (user_id, date, start_min, end_min, note, offline, device, created_at, updated_at) VALUES (?,?,?,NULL,?,?,?,?,?)')
+        .run(target.id, local.date, local.minutes, '', deferred ? 1 : 0, opts.device ?? '', ts, ts);
       entry = db.prepare('SELECT * FROM entries WHERE id = ?').get(Number(r.lastInsertRowid)) as unknown as EntryRow;
     } else {
       const open = openEntry(target.id);
-      if (!open) throw new HttpError(409, 'Non c’è nessun ingresso aperto.');
+      if (!open) {
+        // se un altro dispositivo ha appena chiuso il turno, lo si dice
+        const last = db
+          .prepare('SELECT * FROM entries WHERE user_id = ? AND end_min IS NOT NULL ORDER BY date DESC, start_min DESC LIMIT 1')
+          .get(target.id) as unknown as EntryRow | undefined;
+        if (last) {
+          const endEpoch = localToEpochMs(last.date, last.end_min!, config.tz);
+          if (Math.abs(atMs - endEpoch) <= 6 * 3600000) {
+            throw new HttpError(409, `Non c’è nessun ingresso aperto: l’uscita risulta già registrata alle ${fmtClock(last.end_min!)}${by(last.end_device)}.`);
+          }
+        }
+        throw new HttpError(409, 'Non c’è nessun ingresso aperto.');
+      }
       const end = local.minutes + 1440 * diffDays(open.date, local.date);
       if (end > open.start_min + 1440) {
         throw new HttpError(
@@ -64,7 +84,7 @@ export function applyClock(target: UserRow, kind: 'in' | 'out', opts: ClockOptio
         throw new HttpError(409, deferred ? 'L’uscita coincide o precede l’ingresso: inseriscila a mano.' : 'Hai appena timbrato l’ingresso: attendi almeno un minuto.');
       }
       assertNoOverlap(target.id, open.date, open.start_min, end, open.id);
-      db.prepare('UPDATE entries SET end_min = ?, offline = ?, updated_at = ? WHERE id = ?').run(end, deferred ? 1 : open.offline, Date.now(), open.id);
+      db.prepare('UPDATE entries SET end_min = ?, offline = ?, end_device = ?, updated_at = ? WHERE id = ?').run(end, deferred ? 1 : open.offline, opts.device ?? '', Date.now(), open.id);
       entry = db.prepare('SELECT * FROM entries WHERE id = ?').get(open.id) as unknown as EntryRow;
     }
 

@@ -277,6 +277,21 @@ export function useLoad<T>(fn: () => Promise<T>, deps: unknown[]) {
   return { data, error, loading, reload: () => run(true) };
 }
 
+/** Ricarica i dati quando l'app torna in primo piano (utile se si è usato un altro dispositivo). */
+export function useRefreshOnFocus(reload: () => void) {
+  const ref = useRef(reload);
+  ref.current = reload;
+  useEffect(() => {
+    const f = () => document.visibilityState === 'visible' && ref.current();
+    document.addEventListener('visibilitychange', f);
+    window.addEventListener('focus', f);
+    return () => {
+      document.removeEventListener('visibilitychange', f);
+      window.removeEventListener('focus', f);
+    };
+  }, []);
+}
+
 export function MonthNav({ label, onPrev, onNext, onToday }: { label: string; onPrev: () => void; onNext: () => void; onToday?: () => void }) {
   return (
     <div class="month-nav">

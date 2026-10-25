@@ -1,7 +1,7 @@
 import { useState } from 'preact/hooks';
 import { api, type User } from '../api.ts';
 
-export function Login({ onLogin }: { onLogin: (u: User) => void }) {
+export function Login({ onLogin, notice }: { onLogin: (u: User) => void; notice?: string }) {
   let saved = '';
   try {
     saved = localStorage.getItem('ol_username') ?? '';
@@ -42,6 +42,11 @@ export function Login({ onLogin }: { onLogin: (u: User) => void }) {
           <h1>Ore Lavoro</h1>
           <div class="muted">Accedi con utente e PIN</div>
         </div>
+        {notice && (
+          <div class="banner info" role="status">
+            <div>{notice}</div>
+          </div>
+        )}
         <div class="card stack">
           <div class="field">
             <label for="l-user">Utente</label>

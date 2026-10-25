@@ -6,10 +6,22 @@ import { db, type UserRow } from './db.ts';
 
 export class HttpError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  /** codice leggibile dall'app (es. "replaced": sessione sostituita da un altro dispositivo) */
+  code?: string;
+  constructor(status: number, message: string, code?: string) {
     super(message);
     this.status = status;
+    this.code = code;
   }
+}
+
+/** Nome leggibile del dispositivo dallo user-agent, per i messaggi ("da iPhone"). */
+export function deviceLabel(ua: string): string {
+  if (/iPhone/.test(ua)) return 'iPhone';
+  if (/iPad/.test(ua)) return 'iPad';
+  if (/Android/.test(ua)) return /Mobile/.test(ua) ? 'telefono Android' : 'tablet Android';
+  if (/Windows|Macintosh|Linux|X11|CrOS/.test(ua)) return 'computer';
+  return 'altro dispositivo';
 }
 
 export type AppEnv = {
@@ -59,13 +71,23 @@ export function createSession(c: Context, userId: number) {
   const token = crypto.randomBytes(32).toString('base64url');
   const now = Date.now();
   const expires = now + config.sessionDays * 86400000;
-  db.prepare('INSERT INTO sessions (token_hash, user_id, created_at, last_seen, expires_at, user_agent) VALUES (?,?,?,?,?,?)').run(
+  const ua = (c.req.header('user-agent') ?? '').slice(0, 200);
+  const device = deviceLabel(ua);
+  if (config.singleSession) {
+    // un solo dispositivo attivo: i precedenti restano segnati "sostituiti" per una settimana,
+    // così al primo tocco possono spiegare perché sono stati scollegati
+    db.prepare(
+      "UPDATE sessions SET revoked_reason = 'replaced', revoked_device = ?, expires_at = MIN(expires_at, ?) WHERE user_id = ? AND revoked_reason IS NULL",
+    ).run(device, now + 7 * 86400000, userId);
+  }
+  db.prepare('INSERT INTO sessions (token_hash, user_id, created_at, last_seen, expires_at, user_agent, device) VALUES (?,?,?,?,?,?,?)').run(
     sha256(token),
     userId,
     now,
     now,
     expires,
-    (c.req.header('user-agent') ?? '').slice(0, 200),
+    ua,
+    device,
   );
   setCookie(c, COOKIE, token, {
     httpOnly: true,
@@ -90,10 +112,14 @@ function userFromSession(c: Context): UserRow | null {
   const token = getCookie(c, COOKIE);
   if (!token) return null;
   const h = sha256(token);
-  const s = db.prepare('SELECT user_id, expires_at, last_seen FROM sessions WHERE token_hash = ?').get(h) as
-    | { user_id: number; expires_at: number; last_seen: number }
+  const s = db.prepare('SELECT user_id, expires_at, last_seen, revoked_reason, revoked_device FROM sessions WHERE token_hash = ?').get(h) as
+    | { user_id: number; expires_at: number; last_seen: number; revoked_reason: string | null; revoked_device: string }
     | undefined;
   if (!s) return null;
+  if (s.revoked_reason === 'replaced') {
+    const who = s.revoked_device ? ` (${s.revoked_device})` : '';
+    throw new HttpError(401, `Hai acceso su un altro dispositivo${who}. Accedi di nuovo per continuare qui.`, 'replaced');
+  }
   const now = Date.now();
   if (s.expires_at < now) {
     db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(h);

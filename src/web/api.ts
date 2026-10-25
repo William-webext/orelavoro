@@ -132,9 +132,12 @@ export interface AuditRow {
 
 export class ApiError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  /** es. "replaced": la sessione è stata sostituita dall'accesso su un altro dispositivo */
+  code?: string;
+  constructor(status: number, message: string, code?: string) {
     super(message);
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -192,8 +195,8 @@ export function onServerTime(fn: (serverMs: number, clientAt: number) => void) {
   timeListener = fn;
 }
 
-const unauthorizedListeners = new Set<() => void>();
-export function onUnauthorized(fn: () => void) {
+const unauthorizedListeners = new Set<(e: ApiError) => void>();
+export function onUnauthorized(fn: (e: ApiError) => void) {
   unauthorizedListeners.add(fn);
   return () => unauthorizedListeners.delete(fn);
 }
@@ -252,9 +255,10 @@ async function request<T>(method: string, path: string, body?: unknown, opts: Op
   }
   setReachable(true);
   if (!res.ok) {
-    const msg = (data as { error?: string } | null)?.error ?? 'Errore imprevisto.';
-    if (res.status === 401 && path !== '/login') unauthorizedListeners.forEach((f) => f());
-    throw new ApiError(res.status, msg);
+    const body = data as { error?: string; code?: string } | null;
+    const err = new ApiError(res.status, body?.error ?? 'Errore imprevisto.', body?.code);
+    if (res.status === 401 && path !== '/login') unauthorizedListeners.forEach((f) => f(err));
+    throw err;
   }
   return data as T;
 }

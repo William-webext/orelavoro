@@ -17,6 +17,8 @@ export const config = {
   /** auto = cookie Secure solo se la richiesta arriva via HTTPS (tunnel Cloudflare). */
   cookieSecure: (env.COOKIE_SECURE ?? 'auto') as 'auto' | 'true' | 'false',
   sessionDays: int('SESSION_DAYS', 60),
+  /** Un solo dispositivo attivo per utente: un nuovo accesso scollega quello precedente. */
+  singleSession: (env.SINGLE_SESSION ?? 'true') !== 'false',
   /** Oltre queste ore un ingresso senza uscita è considerato dimenticato. */
   maxShiftHours: int('MAX_SHIFT_HOURS', 12),
   maxDayHours: int('MAX_DAY_HOURS', 14),

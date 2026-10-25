@@ -2,6 +2,7 @@ import { useState } from 'preact/hooks';
 import { api, type User } from '../api.ts';
 import { WEEKDAY_SHORT } from '../format.ts';
 import { detectPlatform, isInstalled, useInstallPrompt } from '../install.ts';
+import { getThemePref, setThemePref, type ThemePref } from '../theme.ts';
 import { navigate, useSession } from '../session.tsx';
 import { Icon, Sheet, toast, toastError } from '../ui.tsx';
 
@@ -73,6 +74,7 @@ export function More() {
   const standalone = isInstalled();
   const platform = detectPlatform();
   const installPrompt = useInstallPrompt();
+  const [theme, setTheme] = useState<ThemePref>(getThemePref());
 
   async function patch(p: Partial<Pick<User, 'displayName' | 'email' | 'autorest' | 'restWeekdays' | 'notifyOpen' | 'monthlyReport'>>, quiet = false) {
     try {
@@ -165,6 +167,33 @@ export function More() {
                 ))}
               </div>
             )}
+          </div>
+
+          <div class="card">
+            <h2>Aspetto</h2>
+            <div class="chips" role="group" aria-label="Tema">
+              {(
+                [
+                  ['auto', 'Automatico'],
+                  ['light', 'Chiaro'],
+                  ['dark', 'Scuro'],
+                ] as const
+              ).map(([v, label]) => (
+                <button
+                  key={v}
+                  class={`chip ${theme === v ? 'on' : ''}`}
+                  onClick={() => {
+                    setThemePref(v);
+                    setTheme(v);
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <p class="small muted" style={{ marginBottom: 0 }}>
+              “Automatico” segue il tema del telefono. La scelta vale solo per questo dispositivo.
+            </p>
           </div>
 
           <div class="card">

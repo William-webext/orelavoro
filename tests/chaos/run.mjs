@@ -119,6 +119,8 @@ function makeScenario(k) {
       outages.push({ start: t, end: t + 1500 + r() * 3500, mode: ['refused', 'hang', 'html502'][Math.floor(r() * 3)] });
     }
   }
+  // 12% degli scenari: un secondo dispositivo accede con lo stesso utente e scollega il primo
+  const kick = r() < 0.12 ? { at: taps[0].at + (lastTap - taps[0].at) * (0.3 + r() * 0.5) } : null;
   const skewMs = dev.skew ? (r() < 0.5 ? -1 : 1) * (3600000 + r() * 3 * 3600000) : (r() - 0.5) * 6000;
   return {
     id: k,
@@ -130,6 +132,7 @@ function makeScenario(k) {
     device: dev,
     taps,
     outages,
+    kick,
     skewMs: Math.round(skewMs),
     syncedBefore: dev.skew ? r() < 0.6 : true,
     username: `d${k}`,
@@ -229,6 +232,10 @@ for (const res of results) {
   const pendingIds = new Set(res.pending.map((p) => p.clientId));
   const wiped = sc.taps.some((t) => t.background?.kill && t.background?.evict);
   let anyLegitRejection = false;
+  // tocchi consecutivi a meno di 2 minuti (virtuali) uno dall'altro: lo stesso minuto fa rifiutare
+  // giustamente l'uscita, e se la risposta si perde il messaggio cambia alla ripetizione
+  const byIdx = [...res.taps].sort((a, b) => a.i - b.i);
+  const tooQuick = byIdx.some((t, k) => k > 0 && t.trueAt - byIdx[k - 1].trueAt < 120000);
   let dataWiped = false; // una timbratura è andata persa perché il telefono ha cancellato i dati locali
   const appliedTaps = [];
 
@@ -252,7 +259,7 @@ for (const res of results) {
       for (const key of [keyNet, keyDev]) bump(key, tap.outcome === 'apierr' ? 'rifiutati' : 'daSistemare');
       (rejectionNotes[msg.replace(/^\d+: /, '')] ??= []).push(`${sc.name} tocco #${tap.i} ${tap.kind}`);
       if (legit.test(msg)) anyLegitRejection = true;
-      else if (cascade.test(msg) && (anyLegitRejection || dataWiped)) anyLegitRejection = true;
+      else if ((cascade.test(msg) || /sovrappone/.test(msg)) && (anyLegitRejection || dataWiped || tooQuick)) anyLegitRejection = true;
       else v.push(['BADREJECT', `tocco #${tap.i} ${tap.kind}: ${msg}`]);
       continue;
     }
@@ -297,7 +304,7 @@ for (const res of results) {
 
   if (v.length) {
     for (const key of [keyNet, keyDev]) bump(key, 'violazioni');
-    violations.push({ name: sc.name, v });
+    violations.push({ name: sc.name, v, trace: res.trace, skew: sc.skewMs, kick: sc.kick });
   }
 }
 
@@ -315,6 +322,11 @@ for (const [m, l] of Object.entries(rejectionNotes)) console.log(`  ${l.length}x
 console.log(`Errori interni del server (500): ${openAlert.length}`);
 for (const l of openAlert.slice(0, 5)) console.log('  ', l);
 
+// traccia completa dei primi scenari con violazioni, per capire cosa è successo
+for (const x of violations.slice(0, 4)) {
+  console.log(`\n--- traccia ${x.name} (skew ${x.skew}ms, scollegamento: ${x.kick ? 'sì' : 'no'}) ---`);
+  console.log((x.trace ?? []).join('\n'));
+}
 const byKind = {};
 for (const x of violations) for (const [k, m] of x.v) (byKind[k] ??= []).push(`${x.name}: ${m}`);
 if (violations.length === 0 && openAlert.length === 0) {

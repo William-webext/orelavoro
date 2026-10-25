@@ -1,7 +1,7 @@
 import { api, type Year as YearData } from '../api.ts';
 import { clockIn, dur, euro, MONTH_SHORT, rate } from '../format.ts';
 import { navigate, parseHash, useSession } from '../session.tsx';
-import { ErrorBox, Icon, Spinner, useLoad } from '../ui.tsx';
+import { ErrorBox, Icon, Spinner, useLoad, useRefreshOnFocus } from '../ui.tsx';
 
 function Bars({ values, fmt, empty }: { values: (number | null)[]; fmt: (n: number) => string; empty: string }) {
   const W = 420;
@@ -45,6 +45,7 @@ export function Year() {
   const thisYear = Number(clockIn(tz, Date.now()).date.slice(0, 4));
   const year = arg >= 2000 && arg <= 2100 ? arg : thisYear;
   const { data, error, loading, reload } = useLoad(() => api.get<YearData>(`/year?y=${year}`), [year]);
+  useRefreshOnFocus(reload);
   const go = (n: number) => navigate(`#/anno/${year + n}`);
 
   return (

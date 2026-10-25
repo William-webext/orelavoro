@@ -30,7 +30,8 @@ export function Today() {
 
   const firstLoad = useRef(true);
   const { data, error, loading, reload } = useLoad<Loaded>(async () => {
-    if (own) await flush(user.id);
+    // l'invio della coda parte in background: non fa aspettare la schermata (e al termine ricarica da sola)
+    if (own) void flush(user.id);
     const cached = own ? cachedStatus(user.id) : null;
     const first = firstLoad.current;
     firstLoad.current = false;
@@ -57,15 +58,22 @@ export function Today() {
   const [, setTick] = useState(0);
   const [sheet, setSheet] = useState<{ entry?: Entry; date?: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
+  busyRef.current = busy;
 
   // orologio che scorre + aggiornamento quando l'app torna in primo piano (promemoria!)
   useEffect(() => {
     const t = setInterval(() => setTick((n) => n + 1), 1000);
+    // con un altro dispositivo in uso, lo stato qui si aggiorna da solo ogni 30 secondi
+    const poll = setInterval(() => {
+      if (document.visibilityState === 'visible' && isReachable() && !busyRef.current) reload();
+    }, 30000);
     const onVis = () => document.visibilityState === 'visible' && reload();
     document.addEventListener('visibilitychange', onVis);
     window.addEventListener('focus', onVis);
     return () => {
       clearInterval(t);
+      clearInterval(poll);
       document.removeEventListener('visibilitychange', onVis);
       window.removeEventListener('focus', onVis);
     };

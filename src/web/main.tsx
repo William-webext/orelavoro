@@ -12,7 +12,10 @@ import { Report } from './pages/Report.tsx';
 import { Today } from './pages/Today.tsx';
 import { Year } from './pages/Year.tsx';
 import { navigate, parseHash, SessionContext, type Person, type Session } from './session.tsx';
+import { applyTheme } from './theme.ts';
 import { Icon, Overlays, Spinner } from './ui.tsx';
+
+applyTheme(); // tema scelto dall'utente (anche il colore della barra del browser)
 
 const NAV = [
   { page: 'oggi', label: 'Oggi', icon: 'clock' },
@@ -33,6 +36,8 @@ function App() {
   // conferma in background; senza, si aspetta la risposta del server.
   const [me, setMe] = useState<MeResponse | null | 'loading'>(() => cachedMe() ?? 'loading');
   const [viewing, setViewingState] = useState<Person | null>(null);
+  // perché si è tornati al login (es. "hai acceso su un altro dispositivo")
+  const [loginNotice, setLoginNotice] = useState('');
   const [route, setRoute] = useState(parseHash());
 
   useEffect(() => {
@@ -68,8 +73,9 @@ function App() {
 
   useEffect(() => {
     refreshMe();
-    return onUnauthorized(() => {
+    return onUnauthorized((e) => {
       clearCaches(); // sessione davvero scaduta: al prossimo avvio si va diretti al login
+      setLoginNotice(e.code === 'replaced' ? e.message : '');
       setMe(null);
     });
   }, [refreshMe]);
@@ -95,7 +101,9 @@ function App() {
     return (
       <>
         <Login
+          notice={loginNotice}
           onLogin={() => {
+            setLoginNotice('');
             setViewAs(null);
             setViewingState(null);
             if (!location.hash) navigate('#/oggi');

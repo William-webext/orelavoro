@@ -90,8 +90,12 @@ const realFetch = globalThis.fetch;
 let healed = true; // vero = rete perfetta (login iniziale e fase finale)
 let cookie = '';
 const trace = [];
-const T = (m) => trace.push(`${(elapsed() / 1000).toFixed(1)}s ${m}`);
-const stats = { requests: 0, refused: 0, hang: 0, html502: 0, captive: 0, lostResponse: 0, truncated: 0, ok: 0 };
+const T = (m) => {
+  const line = `${(elapsed() / 1000).toFixed(1)}s ${m}`;
+  trace.push(line);
+  if (process.env.CHAOS_LIVE) console.log(`#${D.id} ${line}`);
+};
+const stats = { kicks: 0, relogins: 0, requests: 0, refused: 0, hang: 0, html502: 0, captive: 0, lostResponse: 0, truncated: 0, ok: 0 };
 
 const abortErr = () => new DOMException('The operation was aborted', 'AbortError');
 function sleep(ms, signal) {
@@ -204,7 +208,7 @@ defineGlobal('fetch', chaosFetch);
 
 // ---------- app ----------
 const apiMod = await import(pathToFileURL(path.join(ROOT, 'src/web/api.ts')).href);
-const { api, ApiError } = apiMod;
+const { api, ApiError, onUnauthorized } = apiMod;
 const offlineUrl = pathToFileURL(path.join(ROOT, 'src/web/offline.ts')).href;
 let off = await import(offlineUrl);
 let appLaunches = 0;
@@ -229,6 +233,13 @@ function setBackground(on) {
 }
 
 const taps = [];
+// diagnostica: se il dispositivo non ha concluso entro 150 s, stampa dove si è fermato
+setTimeout(() => {
+  console.log(
+    `#${D.id} WATCHDOG`,
+    JSON.stringify({ elapsed: Math.round(elapsed()), healed, suspended, pending: off?.pendingFor?.(userId)?.length, taps: taps.length, ultime: trace.slice(-8) }),
+  );
+}, 150000).unref();
 try {
   // login e primo collegamento con rete perfetta (come la prima apertura dell'app)
   const login = await api.post('/login', { username: D.username, pin: D.pin });
@@ -239,6 +250,55 @@ try {
     off.cacheStatus(userId, st);
   }
   await launchApp();
+
+  if (D.kick) {
+    setTimeout(async () => {
+      for (let k = 0; k < 10; k++) {
+        try {
+          await realFetch(BASE + '/api/login', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'user-agent': 'Mozilla/5.0 (Linux; Android 14; Pixel) Mobile', 'cf-connecting-ip': `10.201.${(D.id >> 8) & 255}.${D.id & 255}` },
+          body: JSON.stringify({ username: D.username, pin: D.pin }),
+          });
+          stats.kicks++;
+          T('ALTRO DISPOSITIVO ha fatto accesso: questa sessione è stata scollegata');
+          return;
+        } catch {
+          await sleep(1000); // server in riavvio: l'altro dispositivo riprova
+        }
+      }
+      exceptions.push('kick: server non raggiungibile');
+    }, D.kick.at);
+  }
+
+  // Come l'app vera: ogni 401 porta alla schermata di accesso, la persona rientra con il PIN
+  // (un tentativo alla volta) e, rientrata, la coda in attesa parte.
+  let reloginP = null;
+  function reLogin() {
+    reloginP ??= (async () => {
+      await sleep(500 + rnd() * 1500); // il tempo di digitare il PIN
+      // la persona rientra quando c'è campo: il login non subisce i guasti iniettati
+      const wasHealed = healed;
+      healed = true;
+      let ok = false;
+      for (let k = 0; k < 12 && !ok; k++) {
+        try {
+          await api.post('/login', { username: D.username, pin: D.pin });
+          stats.relogins++;
+          T('RE-LOGIN');
+          ok = true;
+        } catch {
+          await sleep(1000);
+        }
+      }
+      healed = wasHealed;
+      reloginP = null;
+      if (ok) void off.flush(userId).catch(() => {});
+      return ok;
+    })();
+    return reloginP;
+  }
+  onUnauthorized(() => void reLogin());
 
   healed = false;
   for (let i = 0; i < D.taps.length; i++) {
@@ -258,7 +318,19 @@ try {
     const rec = { i, kind: tap.kind, trueAt, outcome: '', clientId: '', message: '' };
     const before = generatedIds.length;
     try {
-      const r = await off.punch(tap.kind, userId, true);
+      let r;
+      try {
+        r = await off.punch(tap.kind, userId, true);
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 401 && e.code === 'replaced') {
+          // "Hai acceso su un altro dispositivo": la persona rientra e rifà il tocco
+          rec.message = 're-login dopo scollegamento';
+          if (!(await reLogin())) throw e;
+          r = await off.punch(tap.kind, userId, true);
+        } else {
+          throw e;
+        }
+      }
       rec.outcome = r; // 'done' | 'queued'
     } catch (e) {
       if (e instanceof ApiError || e?.name === 'ApiError') {
@@ -269,7 +341,7 @@ try {
         rec.message = String(e?.stack ?? e).slice(0, 300);
       }
     }
-    rec.clientId = generatedIds[before] ?? '';
+    rec.clientId = generatedIds.length > before ? generatedIds[generatedIds.length - 1] : '';
     T(`TOCCO #${i} ${tap.kind} -> ${rec.outcome} ${rec.message}`);
     taps.push(rec);
   }
@@ -278,6 +350,20 @@ try {
   healed = true;
   if (suspended) setBackground(false);
   doc.visibilityState = 'visible';
+  // la persona apre l'app: se il server è appena tornato riprova finché risponde; se la sessione
+  // era stata scollegata da un altro dispositivo, rientra con il PIN
+  for (let k = 0; k < 15; k++) {
+    try {
+      await api.get('/me');
+      break;
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) {
+        await reLogin();
+        break;
+      }
+      await sleep(1000);
+    }
+  }
   dispatch('window', 'online');
   dispatch('document', 'visibilitychange');
   const deadline = elapsed() + 40000;
@@ -297,6 +383,6 @@ parentPort.postMessage({
   exceptions,
   stats,
   launches: appLaunches,
-  trace: process.env.CHAOS_TRACE ? trace : undefined,
+  trace,
 });
 process.exit(0);

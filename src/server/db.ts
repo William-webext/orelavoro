@@ -102,6 +102,14 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX clock_log_user ON clock_log(user_id);
   `,
+  // 3: sessione unica per utente e dispositivo che ha timbrato
+  `
+  ALTER TABLE sessions ADD COLUMN device TEXT NOT NULL DEFAULT '';
+  ALTER TABLE sessions ADD COLUMN revoked_reason TEXT;
+  ALTER TABLE sessions ADD COLUMN revoked_device TEXT NOT NULL DEFAULT '';
+  ALTER TABLE entries ADD COLUMN device TEXT NOT NULL DEFAULT '';
+  ALTER TABLE entries ADD COLUMN end_device TEXT NOT NULL DEFAULT '';
+  `,
 ];
 
 function migrate() {
@@ -161,6 +169,9 @@ export interface EntryRow {
   note: string;
   /** 1 se l'ingresso o l'uscita sono stati registrati offline e sincronizzati dopo */
   offline: number;
+  /** dispositivo che ha registrato l'ingresso / l'uscita (es. "iPhone") */
+  device: string;
+  end_device: string;
   created_at: number;
   updated_at: number;
 }

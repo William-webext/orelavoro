@@ -3,7 +3,7 @@ import { api, DAY_TYPE_LABEL, type Day, type Month as MonthData } from '../api.t
 import { addMonths, clockIn, dur, monthLabel, WEEKDAY_SHORT, parts } from '../format.ts';
 import { navigate, parseHash, useSession } from '../session.tsx';
 import { DaySheet } from '../sheets.tsx';
-import { confirmDialog, ErrorBox, Icon, MonthNav, Spinner, toast, toastError, useLoad } from '../ui.tsx';
+import { confirmDialog, ErrorBox, Icon, MonthNav, Spinner, toast, toastError, useLoad, useRefreshOnFocus } from '../ui.tsx';
 
 export function dayBadge(d: Day) {
   if (d.type) return <span class={`badge ${d.type}`}>{DAY_TYPE_LABEL[d.type]}</span>;
@@ -21,6 +21,7 @@ export function Month() {
   const ym = /^\d{4}-\d{2}$/.test(arg) ? arg : thisYm;
   const [selected, setSelected] = useState<string | null>(null);
   const { data, error, loading, reload } = useLoad(() => api.get<{ month: MonthData }>(`/month?ym=${ym}`), [ym]);
+  useRefreshOnFocus(reload);
 
   const go = (n: number) => navigate(`#/mese/${addMonths(ym, n)}`);
   const month = data?.month;
