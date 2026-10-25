@@ -92,6 +92,21 @@ export function clearCaches() {
   }
 }
 
+/**
+ * Chiede al browser di non cancellare i dati del sito (coda delle timbrature, cache).
+ * Chrome/Android la concede di norma alle app installate; su iPhone dipende dalla versione.
+ * Non mostra nulla all'utente e non fa danni se rifiutata.
+ */
+export async function requestPersistentStorage(): Promise<boolean> {
+  try {
+    if (!navigator.storage?.persist) return false;
+    if (await navigator.storage.persisted()) return true;
+    return await navigator.storage.persist();
+  } catch {
+    return false;
+  }
+}
+
 // ---------- coda ----------
 
 const byTime = (a: QueuedPunch, b: QueuedPunch) => a.at - b.at;

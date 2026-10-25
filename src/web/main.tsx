@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import './styles.css';
 import './install.ts'; // registra subito l'ascolto di "beforeinstallprompt"
 import { api, ApiError, getViewAs, onUnauthorized, setViewAs, type Status, type User } from './api.ts';
-import { cacheMe, cachedMe, clearCaches, startBackgroundSync, useReachable } from './offline.ts';
+import { cacheMe, cachedMe, clearCaches, requestPersistentStorage, startBackgroundSync, useReachable } from './offline.ts';
 import { Admin } from './pages/Admin.tsx';
 import { Login } from './pages/Login.tsx';
 import { Month } from './pages/Month.tsx';
@@ -73,6 +73,10 @@ function App() {
   const reachable = useReachable();
   const userId = me !== 'loading' && me ? me.user.id : null;
   useEffect(() => (userId == null ? undefined : startBackgroundSync(userId)), [userId]);
+  // dopo l'accesso chiede di conservare i dati del sito (protegge la coda dalle pulizie del browser)
+  useEffect(() => {
+    if (userId != null) void requestPersistentStorage();
+  }, [userId]);
 
   // se l'app è stata aperta a server spento e poi il server torna, ricarica la sessione vera
   const wasReachable = useRef(true);
