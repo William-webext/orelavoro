@@ -1,8 +1,9 @@
 import { render, type JSX } from 'preact';
-import { useCallback, useEffect, useState } from 'preact/hooks';
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import './styles.css';
 import './install.ts'; // registra subito l'ascolto di "beforeinstallprompt"
-import { api, getViewAs, onUnauthorized, setViewAs, type Status, type User } from './api.ts';
+import { api, ApiError, getViewAs, onUnauthorized, setViewAs, type Status, type User } from './api.ts';
+import { cacheMe, cachedMe, clearCaches, startBackgroundSync, useReachable } from './offline.ts';
 import { Admin } from './pages/Admin.tsx';
 import { Login } from './pages/Login.tsx';
 import { Month } from './pages/Month.tsx';
@@ -43,7 +44,8 @@ function App() {
 
   const refreshMe = useCallback(async () => {
     try {
-      const r = await api.get<MeResponse>('/me');
+      const r = await api.get<MeResponse>('/me', { timeoutMs: 10000 });
+      cacheMe(r);
       setMe(r);
       // se era attivo "visualizza come", recupera il nome dell'utente osservato
       if (getViewAs() != null) {
@@ -56,8 +58,9 @@ function App() {
           setViewingState(null);
         }
       }
-    } catch {
-      setMe(null);
+    } catch (e) {
+      // Server spento o irraggiungibile: NON è una sessione scaduta. Si apre con i dati salvati.
+      setMe(e instanceof ApiError && e.status === 0 ? cachedMe() : null);
     }
   }, []);
 
@@ -65,6 +68,18 @@ function App() {
     refreshMe();
     return onUnauthorized(() => setMe(null));
   }, [refreshMe]);
+
+  // invio automatico delle timbrature salvate sul telefono quando il server torna
+  const reachable = useReachable();
+  const userId = me !== 'loading' && me ? me.user.id : null;
+  useEffect(() => (userId == null ? undefined : startBackgroundSync(userId)), [userId]);
+
+  // se l'app è stata aperta a server spento e poi il server torna, ricarica la sessione vera
+  const wasReachable = useRef(true);
+  useEffect(() => {
+    if (!wasReachable.current && reachable) refreshMe();
+    wasReachable.current = reachable;
+  }, [reachable, refreshMe]);
 
   if (me === 'loading') return <Spinner />;
   if (me === null) {
@@ -102,6 +117,7 @@ function App() {
       }
       setViewAs(null);
       setViewingState(null);
+      clearCaches();
       setMe(null);
     },
   };
@@ -152,6 +168,7 @@ function App() {
         </aside>
 
         <main class="main">
+          {!reachable && <div class="offline-bar">Server non raggiungibile: modalità offline</div>}
           {viewing && (
             <div class="viewing">
               <span>Stai vedendo i dati di {viewing.displayName}</span>

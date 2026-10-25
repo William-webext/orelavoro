@@ -23,6 +23,8 @@ export interface EntryView {
   minutes: number;
   open: boolean;
   note: string;
+  /** registrata offline e sincronizzata in un secondo momento */
+  offline: boolean;
 }
 
 export interface Warning {
@@ -75,6 +77,7 @@ export function entryView(e: EntryRow): EntryView {
     minutes: open ? 0 : durationMinutes(e.date, e.start_min, e.end_min!, config.tz),
     open,
     note: e.note,
+    offline: !!e.offline,
   };
 }
 

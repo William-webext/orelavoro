@@ -222,6 +222,11 @@ export function DaySheet({ day, onClose, onChanged }: { day: Day; onClose: () =>
                       <div class="shift-time">
                         {e.start} – {e.end ?? 'in corso'}
                         {e.nextDay && <span class="muted small"> (+1)</span>}
+                        {e.offline && (
+                          <span class="badge auto" style={{ marginLeft: 8 }} title="Timbrata offline e sincronizzata dopo">
+                            offline
+                          </span>
+                        )}
                       </div>
                       {e.note && <div class="small muted">{e.note}</div>}
                     </div>

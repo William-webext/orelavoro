@@ -7,6 +7,7 @@ Web app (PWA) per registrare le ore di lavoro e controllare che lo stipendio sia
 - **Accesso con utente e PIN** (6-8 cifre, salvato con hash, blocco temporaneo dopo 5 tentativi errati).
 - **Timbra entrata / uscita** con un tocco (ora del server nel fuso `APP_TZ`) oppure inserimento manuale di data, inizio e fine.
 - **Più turni al giorno**: le ore si sommano, l'intervallo tra due turni (la pausa) non viene contato. Turni a cavallo della mezzanotte e cambio ora legale gestiti.
+- **Funziona anche a server spento**: se il NAS, il tunnel o la rete non rispondono, l'app si apre lo stesso e "Timbra ora" salva ingresso/uscita sul telefono con l'ora del tocco; appena il server torna le timbrature vengono inviate in automatico (senza duplicati) e marcate "offline". Quelle che il server rifiuta (ad esempio uscita senza ingresso) restano in una lista da sistemare.
 - **Promemoria uscita**: se resta un ingresso senza uscita, l'app lo segnala all'apertura; in più arriva una mail (una per ingresso).
 - **Avvisi di incongruenze**: turni molto lunghi, giornate eccessive, giorni passati senza registrazione.
 - **Tipo di giornata** per ogni giorno: lavoro, ferie, malattia, permesso, festivo, riposo. Ferie e malattia contano come ore non lavorate. Riposo automatico facoltativo per i giorni della settimana scelti.
@@ -66,6 +67,7 @@ docker exec -it orelavoro node src/server/cli.ts reset-pin NOMEUTENTE 123456
 | `SMTP_SECURE` | `false` | `true` per TLS implicito (porta 465) |
 | `MAX_SHIFT_HOURS` | `12` | Oltre queste ore un turno è "insolito" e un ingresso aperto è "dimenticato" |
 | `MAX_DAY_HOURS` | `14` | Soglia di avviso per il totale giornaliero |
+| `OFFLINE_MAX_DAYS` | `7` | Una timbratura salvata offline è accettata se non più vecchia di questi giorni |
 | `LOGIN_MAX_FAILURES`, `LOGIN_LOCK_MINUTES` | `5`, `15` | Blocco dopo tentativi errati |
 | `SESSION_DAYS` | `60` | Durata della sessione (si rinnova usando l'app) |
 | `BACKUP_KEEP` | `14` | Backup notturni conservati in `/data/backups` |

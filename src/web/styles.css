@@ -1055,3 +1055,22 @@ table.tbl {
   text-align: center;
   color: var(--muted);
 }
+
+.offline-bar {
+  position: sticky;
+  top: 0;
+  z-index: 16;
+  margin: calc(-1 * (var(--safe-t) + 14px)) -16px 12px;
+  padding: calc(var(--safe-t) + 6px) 16px 6px;
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-align: center;
+}
+@media (min-width: 900px) {
+  .offline-bar {
+    margin: -30px -36px 18px;
+    padding: 8px 36px;
+  }
+}

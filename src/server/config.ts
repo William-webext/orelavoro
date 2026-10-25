@@ -20,6 +20,8 @@ export const config = {
   /** Oltre queste ore un ingresso senza uscita è considerato dimenticato. */
   maxShiftHours: int('MAX_SHIFT_HOURS', 12),
   maxDayHours: int('MAX_DAY_HOURS', 14),
+  /** Una timbratura salvata offline sul telefono viene accettata se non più vecchia di questi giorni. */
+  offlineMaxDays: int('OFFLINE_MAX_DAYS', 7),
   loginMaxFailures: int('LOGIN_MAX_FAILURES', 5),
   loginLockMinutes: int('LOGIN_LOCK_MINUTES', 15),
   backupKeep: int('BACKUP_KEEP', 14),

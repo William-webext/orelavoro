@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import {
   auditIfOther,
@@ -25,12 +25,12 @@ import {
   restWeekdays,
   salaryView,
 } from './calc.ts';
+import { applyClock } from './clock.ts';
 import { config, smtpConfigured } from './config.ts';
 import { db, DAY_TYPES, tx, type EntryRow, type UserRow } from './db.ts';
 import { htmlWrap, sendMail } from './mail.ts';
 import { monthReport, renderPdf, renderXlsx, reportFilename } from './reports.ts';
 import {
-  diffDays,
   durationMinutes,
   euro,
   fmtClock,
@@ -205,40 +205,73 @@ api.get('/status', (c) => {
   });
 });
 
-api.post('/clock/in', (c) => {
-  const target = c.get('target');
-  const now = nowLocal(config.tz);
-  const entry = tx(() => {
-    if (openEntry(target.id)) throw new HttpError(409, 'Hai già un ingresso senza uscita. Segna prima l’uscita.');
-    assertNoOverlap(target.id, now.date, now.minutes, null);
-    const ts = Date.now();
-    const r = db
-      .prepare('INSERT INTO entries (user_id, date, start_min, end_min, note, created_at, updated_at) VALUES (?,?,?,NULL,?,?,?)')
-      .run(target.id, now.date, now.minutes, '', ts, ts);
-    return db.prepare('SELECT * FROM entries WHERE id = ?').get(Number(r.lastInsertRowid)) as unknown as EntryRow;
-  });
-  auditIfOther(c, 'timbra entrata', `${itDate(now.date)} ${fmtClock(now.minutes)}`);
-  return c.json({ entry: entryView(entry) });
+const clockBodySchema = z.object({
+  clientId: z.string().min(8).max(64).optional(),
+  at: z.number().int().optional(),
 });
 
-api.post('/clock/out', (c) => {
+async function clockBody(c: { req: { json: () => Promise<unknown> } }) {
+  let raw: unknown = {};
+  try {
+    raw = await c.req.json();
+  } catch {
+    /* corpo vuoto: timbratura "adesso" */
+  }
+  const r = clockBodySchema.safeParse(raw ?? {});
+  if (!r.success) throw new HttpError(400, 'Dati non validi.');
+  return r.data;
+}
+
+async function clock(c: Context<AppEnv>, kind: 'in' | 'out') {
   const target = c.get('target');
-  const now = nowLocal(config.tz);
-  const entry = tx(() => {
-    const open = openEntry(target.id);
-    if (!open) throw new HttpError(409, 'Non c’è nessun ingresso aperto.');
-    const end = now.minutes + 1440 * diffDays(open.date, now.date);
-    if (end > open.start_min + 1440) {
-      throw new HttpError(422, `L'ingresso del ${itDate(open.date)} alle ${fmtClock(open.start_min)} è troppo vecchio per chiuderlo con un tocco: inserisci tu l'ora di uscita.`);
-    }
-    if (end <= open.start_min) throw new HttpError(409, 'Hai appena timbrato l’ingresso: attendi almeno un minuto.');
-    assertNoOverlap(target.id, open.date, open.start_min, end, open.id);
-    db.prepare('UPDATE entries SET end_min = ?, updated_at = ? WHERE id = ?').run(end, Date.now(), open.id);
-    return db.prepare('SELECT * FROM entries WHERE id = ?').get(open.id) as unknown as EntryRow;
-  });
-  auditIfOther(c, 'timbra uscita', `${itDate(entry.date)} ${fmtClock(entry.start_min)}–${fmtClock(entry.end_min!)}`);
-  return c.json({ entry: entryView(entry) });
+  const res = applyClock(target, kind, await clockBody(c));
+  if (res.entry) {
+    const e = res.entry;
+    auditIfOther(
+      c,
+      kind === 'in' ? 'timbra entrata' : 'timbra uscita',
+      `${itDate(e.date)} ${fmtClock(e.start_min)}${e.end_min == null ? '' : '–' + fmtClock(e.end_min)}`,
+    );
+  }
+  return c.json({ entry: res.entry ? entryView(res.entry) : null, duplicate: res.duplicate });
+}
+
+api.post('/clock/in', (c) => clock(c, 'in'));
+api.post('/clock/out', (c) => clock(c, 'out'));
+
+/**
+ * Sincronizza le timbrature salvate offline sul telefono. Ogni evento è
+ * indipendente e idempotente (clientId): il telefono può ripetere l'invio in
+ * sicurezza anche se non ha ricevuto la risposta.
+ */
+api.post('/clock/sync', async (c) => {
+  const target = c.get('target');
+  const b = await body(
+    c,
+    z.object({
+      events: z
+        .array(z.object({ clientId: z.string().min(8).max(64), kind: z.enum(['in', 'out']), at: z.number().int() }))
+        .min(1)
+        .max(200),
+    }),
+  );
+  const results = [...b.events]
+    .sort((x, y) => x.at - y.at)
+    .map((ev) => {
+      try {
+        const r = applyClock(target, ev.kind, { clientId: ev.clientId, at: ev.at });
+        if (r.entry) {
+          auditIfOther(c, ev.kind === 'in' ? 'timbra entrata (offline)' : 'timbra uscita (offline)', `${itDate(r.entry.date)} ${fmtClock(r.entry.start_min)}`);
+        }
+        return { clientId: ev.clientId, status: r.duplicate ? ('duplicate' as const) : ('ok' as const), message: '' };
+      } catch (e) {
+        if (e instanceof HttpError) return { clientId: ev.clientId, status: 'error' as const, message: e.message };
+        throw e;
+      }
+    });
+  return c.json({ results });
 });
+
 
 // ---------- registrazioni ----------
 

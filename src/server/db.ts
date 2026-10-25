@@ -89,6 +89,19 @@ const MIGRATIONS: string[] = [
     PRIMARY KEY (user_id, kind, ref)
   );
   `,
+  // 2: timbrature differite (coda offline del telefono) e idempotenza dei tentativi
+  `
+  ALTER TABLE entries ADD COLUMN offline INTEGER NOT NULL DEFAULT 0;
+
+  CREATE TABLE clock_log (
+    client_id TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL CHECK (kind IN ('in','out')),
+    at INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX clock_log_user ON clock_log(user_id);
+  `,
 ];
 
 function migrate() {
@@ -146,6 +159,8 @@ export interface EntryRow {
   start_min: number;
   end_min: number | null;
   note: string;
+  /** 1 se l'ingresso o l'uscita sono stati registrati offline e sincronizzati dopo */
+  offline: number;
   created_at: number;
   updated_at: number;
 }
