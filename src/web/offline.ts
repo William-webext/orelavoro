@@ -2,7 +2,7 @@
 // vengono salvati sul telefono con l'ora del momento e inviati appena possibile.
 // L'invio è idempotente (clientId), quindi non si duplica nulla se una risposta si perde.
 import { useEffect, useState } from 'preact/hooks';
-import { api, ApiError, isReachable, onReachableChange, type Status, type User } from './api.ts';
+import { api, ApiError, isReachable, onReachableChange, onServerTime, type Status, type User } from './api.ts';
 
 export interface QueuedPunch {
   clientId: string;
@@ -52,10 +52,22 @@ export function correctedNow(): number {
   return Date.now() + skew;
 }
 
-export function noteServerTime(serverEpochMs: number) {
-  skew = serverEpochMs - Date.now();
+let exactAt = 0;
+
+/**
+ * Registra lo scarto tra l'orologio del telefono e quello del server.
+ * `exact`: l'ora arriva dal corpo di una risposta (precisa); altrimenti dall'intestazione Date
+ * (±1 s), che non sovrascrive una misura precisa recente.
+ */
+export function noteServerTime(serverEpochMs: number, clientAt = Date.now(), exact = true) {
+  if (!exact && Date.now() - exactAt < 60000) return;
+  if (exact) exactAt = Date.now();
+  skew = serverEpochMs - clientAt;
   save(K_SKEW, skew);
 }
+
+// ogni risposta del server corregge l'orologio: un telefono sballato è a posto già dopo il login
+onServerTime((serverMs, clientAt) => noteServerTime(serverMs, clientAt, false));
 
 // ---------- cache per l'uso offline ----------
 
@@ -147,12 +159,24 @@ function newId(): string {
 }
 
 /**
- * Timbra ingresso/uscita. Se il server non è raggiungibile (e `canQueue`) la
- * timbratura resta sul telefono. Restituisce 'queued' in quel caso.
+ * Timbra ingresso/uscita.
+ *  - Se ci sono già timbrature in attesa, la nuova si accoda DIETRO di loro e la coda parte in
+ *    ordine: se passasse davanti, il server la rifiuterebbe ("nessun ingresso aperto").
+ *  - Se il server non è raggiungibile (e `canQueue`) la timbratura resta sul telefono.
+ * Restituisce 'queued' se è ancora sul telefono, 'done' se il server l'ha registrata. Se il server
+ * la rifiuta per una regola (es. ora nel futuro) lancia un ApiError come per una timbratura normale.
  */
 export async function punch(kind: 'in' | 'out', userId: number, canQueue: boolean): Promise<'done' | 'queued'> {
   const at = correctedNow(); // l'istante del tocco, non quello della risposta
   const clientId = newId();
+
+  if (canQueue && pendingFor(userId).length > 0) {
+    queue.push({ clientId, kind, at, userId });
+    persist();
+    await flush(userId);
+    return settle(clientId);
+  }
+
   try {
     // Se già si sa che il server non risponde (o il telefono è offline) non si aspetta a lungo.
     const knownDown = !isReachable() || navigator.onLine === false;
@@ -170,29 +194,49 @@ export async function punch(kind: 'in' | 'out', userId: number, canQueue: boolea
   }
 }
 
+/** Esito di una timbratura messa in coda dopo il tentativo di invio. */
+function settle(clientId: string): 'done' | 'queued' {
+  const q = queue.find((x) => x.clientId === clientId);
+  if (!q) return 'done';
+  if (q.error) {
+    // rifiutata dal server: come per una timbratura normale, si mostra l'errore e non resta in lista
+    queue = queue.filter((x) => x !== q);
+    persist();
+    throw new ApiError(409, q.error);
+  }
+  return 'queued';
+}
+
 let flushing: Promise<void> | null = null;
 
 /** Invia al server le timbrature in coda. Può essere chiamata liberamente: non fa nulla se non serve. */
 export function flush(userId: number): Promise<void> {
-  if (flushing) return flushing;
-  const items = pendingFor(userId);
-  if (items.length === 0) return Promise.resolve();
+  if (flushing) {
+    // un invio è già in corso: al suo termine si riparte se nel frattempo si è accodato altro
+    return flushing.then(() => (pendingFor(userId).length > 0 ? flush(userId) : undefined));
+  }
+  if (pendingFor(userId).length === 0) return Promise.resolve();
   flushing = (async () => {
     try {
-      const r = await api.post<{ results: { clientId: string; status: 'ok' | 'duplicate' | 'error'; message: string }[] }>(
-        '/clock/sync',
-        { events: items.map(({ clientId, kind, at }) => ({ clientId, kind, at })) },
-        { noAs: true, timeoutMs: 20000 },
-      );
-      for (const res of r.results) {
-        if (res.status === 'error') {
-          const q = queue.find((x) => x.clientId === res.clientId);
-          if (q) q.error = res.message;
-        } else {
-          queue = queue.filter((x) => x.clientId !== res.clientId);
+      // più giri se, mentre si inviava, altre timbrature si sono accodate
+      for (let round = 0; round < 4; round++) {
+        const items = pendingFor(userId);
+        if (items.length === 0) break;
+        const r = await api.post<{ results: { clientId: string; status: 'ok' | 'duplicate' | 'error'; message: string }[] }>(
+          '/clock/sync',
+          { events: items.map(({ clientId, kind, at }) => ({ clientId, kind, at })) },
+          { noAs: true, timeoutMs: 20000 },
+        );
+        for (const res of r.results) {
+          if (res.status === 'error') {
+            const q = queue.find((x) => x.clientId === res.clientId);
+            if (q) q.error = res.message;
+          } else {
+            queue = queue.filter((x) => x.clientId !== res.clientId);
+          }
         }
+        persist();
       }
-      persist();
     } catch {
       /* ancora irraggiungibile o sessione scaduta: restano in coda e si riprova */
     } finally {

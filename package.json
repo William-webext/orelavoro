@@ -14,6 +14,8 @@
     "start": "node --env-file-if-exists=.env src/server/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "node --test \"src/server/**/*.test.ts\"",
+    "test:chaos": "node tests/chaos/run.mjs",
+    "test:fuzz": "node tests/chaos/api-fuzz.mjs",
     "icons": "node scripts/make-icons.mjs"
   },
   "dependencies": {

@@ -114,7 +114,8 @@ admin.post('/users/:id/unlock', (c) => {
 });
 
 admin.get('/audit', (c) => {
-  const limit = Math.min(500, Math.max(1, Number(c.req.query('limit') ?? 100)));
+  const asked = Number(c.req.query('limit') ?? 100);
+  const limit = Number.isFinite(asked) ? Math.min(500, Math.max(1, Math.floor(asked))) : 100;
   const rows = db.prepare('SELECT * FROM audit ORDER BY id DESC LIMIT ?').all(limit) as unknown as {
     id: number;
     ts: number;

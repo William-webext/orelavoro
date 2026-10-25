@@ -29,7 +29,9 @@ interface MeResponse {
 }
 
 function App() {
-  const [me, setMe] = useState<MeResponse | null | 'loading'>('loading');
+  // Con una sessione già salvata l'app si mostra subito (anche a server spento) e si
+  // conferma in background; senza, si aspetta la risposta del server.
+  const [me, setMe] = useState<MeResponse | null | 'loading'>(() => cachedMe() ?? 'loading');
   const [viewing, setViewingState] = useState<Person | null>(null);
   const [route, setRoute] = useState(parseHash());
 
@@ -44,7 +46,7 @@ function App() {
 
   const refreshMe = useCallback(async () => {
     try {
-      const r = await api.get<MeResponse>('/me', { timeoutMs: 10000 });
+      const r = await api.get<MeResponse>('/me', { timeoutMs: cachedMe() ? 6000 : 10000 });
       cacheMe(r);
       setMe(r);
       // se era attivo "visualizza come", recupera il nome dell'utente osservato
@@ -66,7 +68,10 @@ function App() {
 
   useEffect(() => {
     refreshMe();
-    return onUnauthorized(() => setMe(null));
+    return onUnauthorized(() => {
+      clearCaches(); // sessione davvero scaduta: al prossimo avvio si va diretti al login
+      setMe(null);
+    });
   }, [refreshMe]);
 
   // invio automatico delle timbrature salvate sul telefono quando il server torna

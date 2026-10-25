@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { api, ApiError, type Entry, type Status, type Warning } from '../api.ts';
+import { api, ApiError, isReachable, type Entry, type Status, type Warning } from '../api.ts';
 import { cacheStatus, cachedStatus, correctedNow, discardPunch, flush, noteServerTime, punch, retryPunch, usePunchQueue, useReachable, type QueuedPunch } from '../offline.ts';
 import { clockIn, dayLong, dur, durLong, itDate, monthLabel } from '../format.ts';
 import { navigate, useSession } from '../session.tsx';
@@ -14,7 +14,8 @@ interface Loaded {
 
 /** Ingresso aperto "effettivo": quello del server più le timbrature in attesa di invio. */
 function effectiveOpen(st: Status, pending: QueuedPunch[]): { startEpoch: number } | null {
-  let open = st.open ? { startEpoch: st.now.epochMs - st.open.elapsedMinutes * 60000 } : null;
+  // (startEpochMs può mancare in una cache salvata da una versione precedente)
+  let open = st.open ? { startEpoch: st.open.startEpochMs ?? st.now.epochMs - st.open.elapsedMinutes * 60000 } : null;
   for (const p of pending) open = p.kind === 'in' ? { startEpoch: p.at } : null;
   return open;
 }
@@ -27,10 +28,18 @@ export function Today() {
   const pending = own ? queue.pending : [];
   const failed = own ? queue.failed : [];
 
+  const firstLoad = useRef(true);
   const { data, error, loading, reload } = useLoad<Loaded>(async () => {
     if (own) await flush(user.id);
+    const cached = own ? cachedStatus(user.id) : null;
+    const first = firstLoad.current;
+    firstLoad.current = false;
+    // All'apertura, con il server già dato per irraggiungibile e dati salvati, si parte subito
+    // da quelli (il ritorno del server fa ricaricare da solo, vedi sotto). "Riprova" invece prova davvero.
+    if (first && cached && !isReachable()) return { st: cached, stale: true };
     try {
-      const st = await api.get<Status>('/status', { timeoutMs: 12000 });
+      // con dati salvati non si aspetta a lungo un server che non risponde
+      const st = await api.get<Status>('/status', { timeoutMs: cached ? 3000 : 12000 });
       if (own) {
         cacheStatus(user.id, st);
         noteServerTime(st.now.epochMs);

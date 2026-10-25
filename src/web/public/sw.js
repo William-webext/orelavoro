@@ -2,6 +2,7 @@
 // I dati (/api) non vengono mai messi in cache: le ore devono sempre arrivare dal server.
 // Le timbrature fatte offline sono gestite dall'app (coda sul telefono), non da qui.
 const CACHE = 'orelavoro-shell-v2';
+const NAV_TIMEOUT_MS = 3000;
 
 // Alla prima installazione scarica anche JS/CSS indicati da index.html,
 // altrimenti la prima apertura offline non troverebbe i file dell'app.
@@ -34,18 +35,30 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
   if (url.origin !== location.origin || url.pathname.startsWith('/api/')) return;
 
-  // Pagine: prima la rete (così gli aggiornamenti arrivano subito), se manca si usa la copia salvata.
+  // Pagine: prima la rete (così gli aggiornamenti arrivano subito), ma senza aspettare
+  // all'infinito. Se il server non risponde entro pochi secondi (container in pausa, NAS
+  // sovraccarico), o risponde con un errore 5xx (tunnel spento: pagina di errore di Cloudflare),
+  // si apre subito la copia salvata dell'app.
   if (req.mode === 'navigate') {
     event.respondWith(
-      fetch(req)
-        .then((res) => {
+      (async () => {
+        const network = fetch(req).then((res) => {
+          if (res.status >= 500) throw new Error('server non disponibile');
           if (res.ok) {
             const copy = res.clone();
             caches.open(CACHE).then((c) => c.put('/', copy));
           }
           return res;
-        })
-        .catch(() => caches.match('/')),
+        });
+        network.catch(() => {}); // già gestita sotto: evita avvisi se perde la gara
+        const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), NAV_TIMEOUT_MS));
+        try {
+          return await Promise.race([network, timeout]);
+        } catch {
+          const cached = await caches.match('/');
+          return cached || network;
+        }
+      })(),
     );
     return;
   }

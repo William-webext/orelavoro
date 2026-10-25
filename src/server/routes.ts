@@ -191,7 +191,7 @@ api.get('/status', (c) => {
   let openView = null;
   if (open) {
     const elapsed = Math.max(0, Math.round((Date.now() - localToEpochMs(open.date, open.start_min, config.tz)) / 60000));
-    openView = { ...entryView(open), elapsedMinutes: elapsed };
+    openView = { ...entryView(open), elapsedMinutes: elapsed, startEpochMs: localToEpochMs(open.date, open.start_min, config.tz) };
   }
   return c.json({
     actor: publicUser(c.get('actor')),

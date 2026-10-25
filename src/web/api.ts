@@ -87,7 +87,7 @@ export interface Status {
   actor: User;
   target: User;
   now: { date: string; time: string; epochMs: number };
-  open: (Entry & { elapsedMinutes: number }) | null;
+  open: (Entry & { elapsedMinutes: number; startEpochMs: number }) | null;
   today: Day;
   monthMinutes: number;
   warnings: Warning[];
@@ -186,6 +186,12 @@ export function onReachableChange(fn: () => void) {
 
 // ---------- chiamate ----------
 
+/** Chi vuole conoscere l'ora del server (per correggere un orologio del telefono sballato). */
+let timeListener: ((serverMs: number, clientAt: number) => void) | null = null;
+export function onServerTime(fn: (serverMs: number, clientAt: number) => void) {
+  timeListener = fn;
+}
+
 const unauthorizedListeners = new Set<() => void>();
 export function onUnauthorized(fn: () => void) {
   unauthorizedListeners.add(fn);
@@ -209,6 +215,7 @@ interface Opts {
  */
 async function request<T>(method: string, path: string, body?: unknown, opts: Opts = {}): Promise<T> {
   let res: Response;
+  const sentAt = Date.now();
   try {
     res = await fetch(url(path, opts.noAs), {
       method,
@@ -221,23 +228,35 @@ async function request<T>(method: string, path: string, body?: unknown, opts: Op
     setReachable(false);
     throw new ApiError(0, 'Server non raggiungibile. Controlla la connessione.');
   }
+  // Le risposte del nostro server sono sempre JSON. Qualsiasi altra cosa (pagina di errore di
+  // Cloudflare, portale "accedi al Wi-Fi", blocco di un proxy) vuol dire che il server vero
+  // non è stato raggiunto: va trattata come "non raggiungibile", non come un errore dell'app.
   const isJson = (res.headers.get('content-type') ?? '').includes('json');
-  if (!res.ok && res.status >= 500 && !isJson) {
+  if (!isJson) {
     setReachable(false);
-    throw new ApiError(0, 'Server non raggiungibile. Riprova tra poco.');
+    throw new ApiError(0, 'Server non raggiungibile (risposta non valida dalla rete).');
+  }
+  // L'intestazione Date delle risposte del nostro server dà l'ora vera (precisione ~1 s).
+  const dateHeader = res.headers.get('date');
+  if (dateHeader && !(Number(res.headers.get('age') ?? 0) > 5)) {
+    const ms = Date.parse(dateHeader);
+    if (Number.isFinite(ms)) timeListener?.(ms + 500, (sentAt + Date.now()) / 2);
+  }
+  let data: unknown;
+  try {
+    data = await res.json();
+  } catch {
+    // connessione caduta a metà risposta, o tempo scaduto durante la lettura
+    setReachable(false);
+    throw new ApiError(0, 'Risposta interrotta: server non raggiungibile.');
   }
   setReachable(true);
   if (!res.ok) {
-    let msg = 'Errore imprevisto.';
-    try {
-      msg = ((await res.json()) as { error?: string }).error ?? msg;
-    } catch {
-      /* risposta non JSON */
-    }
+    const msg = (data as { error?: string } | null)?.error ?? 'Errore imprevisto.';
     if (res.status === 401 && path !== '/login') unauthorizedListeners.forEach((f) => f());
     throw new ApiError(res.status, msg);
   }
-  return (await res.json()) as T;
+  return data as T;
 }
 
 export const api = {

@@ -95,6 +95,6 @@ npm start                # http://localhost:3000
 ```
 
 In sviluppo: `npm run dev:server` e, in un altro terminale, `npm run dev:web` (Vite su :5173 con proxy verso l'API).
-Controlli: `npm run typecheck` e `npm test`. Icone: `npm run icons`.
+Controlli: `npm run typecheck` e `npm test`. Prove di robustezza prima di pubblicare (alcuni minuti): `npm run test:chaos` (300 telefoni con reti difettose) e `npm run test:fuzz` (sicurezza e richieste malformate), vedi `tests/chaos/README.md`. Icone: `npm run icons`.
 
 Stack: Node 24 (TypeScript con type stripping, `node:sqlite`), Hono, Preact + Vite, nodemailer, pdfkit, exceljs.

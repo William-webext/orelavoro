@@ -1074,3 +1074,19 @@ table.tbl {
     padding: 8px 36px;
   }
 }
+
+/* schermi stretti (iPhone SE, telefoni piccoli): l'intestazione va a capo invece di sporgere */
+.page-head {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+.month-nav .title {
+  min-width: 124px;
+  min-height: 40px;
+  display: grid;
+  place-items: center;
+  padding: 0 4px;
+  font-size: inherit;
+  font-weight: 750;
+  color: inherit;
+}
