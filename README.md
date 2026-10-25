@@ -2,6 +2,12 @@
 
 Web app (PWA) per registrare le ore di lavoro e controllare che lo stipendio sia commisurato alle ore effettivamente fatte. Pensata per uso personale e familiare, in container su un NAS Synology e pubblicata via Cloudflare Tunnel. Si installa su iPhone dalla schermata Home, senza App Store.
 
+## Documentazione
+
+📘 **[Manuale d'uso e di amministrazione](docs/MANUALE.md)** — uso quotidiano, installazione sul NAS, manutenzione, backup e **ripristino** (con i comandi), sicurezza, risoluzione dei problemi. Disponibile anche in Word: [`docs/Manuale-Ore-Lavoro.docx`](docs/Manuale-Ore-Lavoro.docx).
+
+Le schermate del manuale usano dati inventati e si rigenerano con `docs/tools/screenshots.mjs` (vedi il capitolo 12 del manuale).
+
 ## Funzioni
 
 - **Accesso con utente e PIN** (6-8 cifre, salvato con hash, blocco temporaneo dopo 5 tentativi errati).
@@ -49,6 +55,28 @@ Il superadmin viene creato **solo al primo avvio** con database vuoto. Gli altri
 ### Aggiornamento
 
 Portainer → *Stacks* → `orelavoro` → *Update the stack* con *Re-pull image* attivo. I dati restano nella cartella `/data`.
+
+### Aggiornamenti del database e ripristino
+
+Quando un aggiornamento dell'app cambia la struttura del database, all'avvio succede questo, in automatico:
+
+1. **Copia preventiva** completa e verificata: `/data/backups/pre-migrazione_v3-v4_AAAA-MM-GGTHH-MM-SS-mmm.db` (si tengono le ultime 10). Se la copia non riesce, la migrazione **non parte**.
+2. **Tutto o niente**: le modifiche si applicano in un'unica transazione con controlli di integrità finali. Se qualcosa va storto, il database resta **esattamente com'era** e l'app si ferma con un messaggio chiaro nei log (*Containers → orelavoro → Logs*, righe `[db] …`).
+3. Un database **più nuovo** dell'app (ad esempio dopo aver rimesso un'immagine vecchia) non viene toccato: l'app si ferma e lo spiega.
+
+Se invece la migrazione riesce ma vuoi tornare indietro (ad esempio i dati non ti tornano), ripristina la copia preventiva **a container fermo**:
+
+```bash
+# 1) ferma lo stack in Portainer (Stacks → orelavoro → Stop)
+# 2) vedi le copie disponibili e ripristina quella voluta (stessi PUID/PGID dello stack)
+docker run --rm -e PUID=1026 -e PGID=100 -v /volume1/docker/orelavoro/data:/data ghcr.io/william-webext/orelavoro:latest node src/server/cli.ts list-backups
+docker run --rm -e PUID=1026 -e PGID=100 -v /volume1/docker/orelavoro/data:/data ghcr.io/william-webext/orelavoro:latest node src/server/cli.ts restore pre-migrazione_v3-v4_2026-10-25T14-32-10-123.db
+# 3) riavvia lo stack
+```
+
+Il comando rifiuta di lavorare se il database è in uso, e prima di sostituirlo salva quello attuale in `prima-del-ripristino_….db`: anche il ripristino si può annullare. Se per tornare a una versione precedente dell'app serve anche l'immagine vecchia, ripristina la copia e poi usa il tag di quell'immagine (ad esempio `ghcr.io/william-webext/orelavoro:sha-xxxxxxx`) nello stack.
+
+**Senza riga di comando**: con lo stack fermo, da File Station copia la copia scelta sopra `orelavoro.db` e **cancella** `orelavoro.db-wal` e `orelavoro.db-shm` (se esistono), poi riavvia.
 
 ### PIN dimenticato
 

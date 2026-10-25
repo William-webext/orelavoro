@@ -1,0 +1,9 @@
+{
+  "name": "orelavoro-docs-tools",
+  "private": true,
+  "type": "module",
+  "description": "Strumenti per generare la documentazione (non fanno parte dell'app)",
+  "dependencies": {
+    "docx": "^9.5.0"
+  }
+}
